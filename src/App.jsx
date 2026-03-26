@@ -5,6 +5,7 @@ import { NOTIFICATION_TEMPLATE_DAY_2 } from "./notificationTemplateDay2.js";
 
 const API_GET  = "https://adecon-backend-8y4v.onrender.com/api/user/all";
 const API_POST = "https://adecon-backend-8y4v.onrender.com/api/user";
+const API_ACTIVITIES = "https://adecon-backend-8y4v.onrender.com/api/activity/all";
 
 const FIELDS = ["email", "fullname", "mobileno", "city", "state", "country", "type"];
 
@@ -31,12 +32,12 @@ const ICONS = {
 const EMPTY_FORM = { email: "", fullname: "", mobileno: "", city: "", state: "", country: "", type: "" };
 
 const TEMPLATES = {
-  day1: { label: "Day 1", template: NOTIFICATION_TEMPLATE_DAY_1, subject: "Reminder To Join ADECON 2026 – Day 1" },
-  day2: { label: "Day 2", template: NOTIFICATION_TEMPLATE_DAY_2, subject: "Reminder To Join ADECON 2026 – Day 2" },
+  day1: { label: "Day 1", template: NOTIFICATION_TEMPLATE_DAY_1, subject: "Reminder To Join ADECON 2026" },
+  day2: { label: "Day 2", template: NOTIFICATION_TEMPLATE_DAY_2, subject: "Reminder To Join ADECON 2026" },
 };
 
 const EXPORT_FILTER_FIELDS = [
-  { value: "none",    label: "No Filter – Export All" },
+  { value: "none",    label: "No Filter" },
   { value: "type",    label: "Type" },
   { value: "city",    label: "City" },
   { value: "state",   label: "State" },
@@ -52,6 +53,27 @@ function exportCSV(rows, filename) {
   const blob    = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url     = URL.createObjectURL(blob);
   const a       = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Activity CSV export helper ────────────────────────────────────────────────
+function exportActivitiesCSV(rows, filename) {
+  const cols    = ["email","firstLogin","lastLogin","firstView","lastView","stalls"];
+  const headers = ["Email","First Login","Last Login","First View","Last View","Stalls"];
+  const esc     = (v) => `"${String(v ?? "").replace(/"/g,'""')}"`;
+  const csv     = [
+    headers.join(","),
+    ...rows.map((r) =>
+      cols.map((c) => {
+        const val = c === "stalls" ? (Array.isArray(r[c]) ? r[c].join("; ") : (r[c] || "")) : (r[c] || "");
+        return esc(val);
+      }).join(",")
+    ),
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
@@ -141,11 +163,6 @@ function TemplatePicker({ mode, user, userCount, onConfirm, onClose }) {
           <div className="modal-header">
             <div>
               <div className="modal-title">{mode === "all" ? "Send Notification to All" : "Send Notification"}</div>
-              <div className="modal-subtitle">
-                {mode === "all"
-                  ? `Choose a template to send to ${userCount} users`
-                  : `Choose a template for ${user?.fullname || user?.email}`}
-              </div>
             </div>
             <button className="modal-close" onClick={onClose}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -180,7 +197,7 @@ function TemplatePicker({ mode, user, userCount, onConfirm, onClose }) {
   );
 }
 
-// ─── Export Modal ─────────────────────────────────────────────────────────────
+// ─── Export Modal (Users) ─────────────────────────────────────────────────────
 function ExportModal({ users, onClose }) {
   const [filterField, setFilterField] = useState("none");
   const [filterValue, setFilterValue] = useState("");
@@ -239,7 +256,7 @@ function ExportModal({ users, onClose }) {
           <div className="modal-header">
             <div>
               <div className="modal-title">Export as CSV</div>
-              <div className="modal-subtitle">Filter users before exporting</div>
+         
             </div>
             <button className="modal-close" onClick={onClose}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -248,7 +265,6 @@ function ExportModal({ users, onClose }) {
 
           <div className="modal-body">
             <div className="filter-section">
-              {/* Field chips */}
               <div>
                 <div className="filter-section-label">Filter by field</div>
                 <div className="filter-chips">
@@ -264,13 +280,12 @@ function ExportModal({ users, onClose }) {
                 </div>
               </div>
 
-              {/* Value selector */}
               {filterField !== "none" && (
                 <div className="filter-value-wrap">
                   <div className="filter-section-label">Select value</div>
                   {uniqueValues.length > 0 ? (
                     <select className="filter-select" value={filterValue} onChange={(e) => setFilterValue(e.target.value)}>
-                      <option value="">— All values (no value filter) —</option>
+                      <option value="">All</option>
                       {uniqueValues.map((v) => (
                         <option key={v} value={v}>{v}</option>
                       ))}
@@ -286,16 +301,15 @@ function ExportModal({ users, onClose }) {
                 </div>
               )}
 
-              {/* Live row count */}
               <div className="export-preview-bar">
                 <div>
                   <div className="export-preview-lbl">Rows to export</div>
                   <div className="export-preview-sub">
                     {filterField === "none"
-                      ? "No filter applied – exporting all users"
+                      ? "All"
                       : filterValue
                         ? `Filtered by ${filterField} = "${filterValue}"`
-                        : `No value selected – exporting all users`}
+                        : `All`}
                   </div>
                 </div>
                 <div className="export-preview-count">{preview.length} / {users.length}</div>
@@ -316,22 +330,166 @@ function ExportModal({ users, onClose }) {
   );
 }
 
+// ─── Activity Export Modal ────────────────────────────────────────────────────
+function ActivityExportModal({ activities, onClose }) {
+  const [selectedStalls, setSelectedStalls] = useState([]);
+
+  // Collect all unique stall names across all activity records
+  const allStalls = useMemo(() => {
+    const set = new Set();
+    activities.forEach((a) => {
+      const stalls = Array.isArray(a.stalls) ? a.stalls : [];
+      stalls.forEach((s) => { if (s) set.add(String(s).trim()); });
+    });
+    return [...set].sort();
+  }, [activities]);
+
+  const toggleStall = (stall) => {
+    setSelectedStalls((prev) =>
+      prev.includes(stall) ? prev.filter((s) => s !== stall) : [...prev, stall]
+    );
+  };
+
+  const preview = useMemo(() => {
+    if (selectedStalls.length === 0) return activities;
+    // Keep rows whose stalls array contains ALL selected stalls
+    return activities.filter((a) => {
+      const rowStalls = (Array.isArray(a.stalls) ? a.stalls : []).map((s) => String(s).trim());
+      return selectedStalls.every((sel) => rowStalls.includes(sel));
+    });
+  }, [activities, selectedStalls]);
+
+  const handleExport = () => {
+    const suffix = selectedStalls.length > 0 ? `_stalls-filtered` : "_all";
+    exportActivitiesCSV(preview, `adecon_activities${suffix}.csv`);
+    onClose();
+  };
+
+  return (
+    <>
+      <style>{`
+        ${MODAL_CSS}
+        .act-export-modal { width:520px; max-height:90vh; display:flex; flex-direction:column; }
+        .act-export-modal .modal-body { overflow-y:auto; flex:1; }
+        .filter-section { display:flex; flex-direction:column; gap:16px; }
+        .filter-section-label { font-size:11.5px; font-weight:600; color:var(--text-muted); letter-spacing:0.4px; text-transform:uppercase; margin-bottom:8px; }
+        .stall-grid { display:flex; flex-wrap:wrap; gap:8px; max-height:200px; overflow-y:auto; padding:2px; }
+        .stall-chip {
+          padding:7px 14px; font-size:12.5px; font-weight:500;
+          border:1.5px solid var(--border); border-radius:20px;
+          background:var(--bg); color:var(--text-muted);
+          cursor:pointer; transition:all 0.13s; display:flex; align-items:center; gap:6px;
+          user-select:none;
+        }
+        .stall-chip:hover { border-color:var(--accent); color:var(--accent); }
+        .stall-chip.active { border-color:var(--accent); background:var(--accent-light); color:var(--accent); font-weight:600; }
+        .stall-chip-check { width:14px; height:14px; border-radius:3px; border:1.5px solid currentColor; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+        .stall-chip.active .stall-chip-check { background:var(--accent); border-color:var(--accent); }
+        .stall-chip.active .stall-chip-check svg { display:block; }
+        .stall-chip-check svg { display:none; }
+        .no-stalls-note { font-size:13px; color:var(--text-muted); padding:12px; background:var(--bg); border-radius:var(--radius-sm); border:1px dashed var(--border); }
+        .selected-stalls-info { font-size:12px; color:var(--text-muted); margin-top:4px; }
+        .selected-stalls-info span { color:var(--accent); font-weight:600; }
+        .clear-stalls-btn { font-size:12px; color:var(--text-muted); background:none; border:none; cursor:pointer; padding:0; text-decoration:underline; }
+        .clear-stalls-btn:hover { color:var(--error); }
+        .export-preview-bar {
+          padding:12px 14px; background:var(--bg);
+          border:1px solid var(--border-light); border-radius:var(--radius-sm);
+          display:flex; align-items:center; justify-content:space-between;
+        }
+        .export-preview-lbl { font-size:12px; color:var(--text-muted); }
+        .export-preview-count { font-family:'DM Mono',monospace; font-size:14px; font-weight:700; color:var(--text); }
+        .export-preview-sub  { font-size:11px; color:var(--text-subtle); }
+      `}</style>
+      <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+        <div className="modal act-export-modal">
+          <div className="modal-header">
+            <div>
+              <div className="modal-title">Export as CSV</div>
+            </div>
+            <button className="modal-close" onClick={onClose}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <div className="modal-body">
+            <div className="filter-section">
+              <div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px"}}>
+                  <div className="filter-section-label" style={{margin:0}}>Filter by stalls</div>
+                  {selectedStalls.length > 0 && (
+                    <button className="clear-stalls-btn" onClick={() => setSelectedStalls([])}>Clear all</button>
+                  )}
+                </div>
+                {allStalls.length === 0 ? (
+                  <div className="no-stalls-note">No stall data available in activities.</div>
+                ) : (
+                  <>
+                    <div className="stall-grid">
+                      {allStalls.map((stall) => (
+                        <button
+                          key={stall}
+                          className={`stall-chip${selectedStalls.includes(stall) ? " active" : ""}`}
+                          onClick={() => toggleStall(stall)}
+                        >
+                          <span className="stall-chip-check">
+                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                          </span>
+                          {stall}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="export-preview-bar">
+                <div>
+                  <div className="export-preview-lbl">Rows to export</div>
+                  <div className="export-preview-sub">
+                    {selectedStalls.length === 0
+                      ? "All"
+                      : `Must include/contain : ${selectedStalls.join(", ")}`}
+                  </div>
+                </div>
+                <div className="export-preview-count">{preview.length} / {activities.length}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="modal-footer">
+            <button className="btn-cancel" onClick={onClose}>Cancel</button>
+            <button className="btn-action green" onClick={handleExport} disabled={preview.length === 0}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export {preview.length} rows
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [users,      setUsers]      = useState([]);
-  const [loading,    setLoading]    = useState(false);
-  const [formData,   setFormData]   = useState(EMPTY_FORM);
-  const [importData, setImportData] = useState([]);
-  const [uploading,  setUploading]  = useState(false);
-  const [search,     setSearch]     = useState("");
-  const [activeTab,  setActiveTab]  = useState("users");
-  const [notifSent,  setNotifSent]  = useState({});
-  const [toast,      setToast]      = useState(null);
-  const [pickerMode, setPickerMode] = useState(null);
-  const [pickerUser, setPickerUser] = useState(null);
-  const [pickerIdx,  setPickerIdx]  = useState(null);
-  const [sendingAll, setSendingAll] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
+  const [users,           setUsers]           = useState([]);
+  const [activities,      setActivities]      = useState([]);
+  const [loading,         setLoading]         = useState(false);
+  const [loadingAct,      setLoadingAct]      = useState(false);
+  const [formData,        setFormData]        = useState(EMPTY_FORM);
+  const [importData,      setImportData]      = useState([]);
+  const [uploading,       setUploading]       = useState(false);
+  const [search,          setSearch]          = useState("");
+  const [actSearch,       setActSearch]       = useState("");
+  const [activeTab,       setActiveTab]       = useState("users");
+  const [notifSent,       setNotifSent]       = useState({});
+  const [toast,           setToast]           = useState(null);
+  const [pickerMode,      setPickerMode]      = useState(null);
+  const [pickerUser,      setPickerUser]      = useState(null);
+  const [pickerIdx,       setPickerIdx]       = useState(null);
+  const [sendingAll,      setSendingAll]      = useState(false);
+  const [exportOpen,      setExportOpen]      = useState(false);
+  const [actExportOpen,   setActExportOpen]   = useState(false);
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -348,7 +506,24 @@ export default function App() {
     finally  { setLoading(false); }
   };
 
+  const fetchActivities = async () => {
+    setLoadingAct(true);
+    try {
+      const res  = await fetch(API_ACTIVITIES);
+      const data = await res.json();
+      if (data.status === "success") setActivities(data.message);
+    } catch { showToast("Failed to fetch activities", "error"); }
+    finally  { setLoadingAct(false); }
+  };
+
   useEffect(() => { fetchUsers(); }, []);
+
+  // Fetch activities when tab is first opened
+  useEffect(() => {
+    if (activeTab === "activities" && activities.length === 0) {
+      fetchActivities();
+    }
+  }, [activeTab]);
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
@@ -358,7 +533,7 @@ export default function App() {
       const res  = await fetch(API_POST, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),   // ← type is included
+        body: JSON.stringify(formData),
       });
       const data = await res.json();
       if (data.status === "success") {
@@ -451,6 +626,22 @@ export default function App() {
   const filtered = users.filter((u) =>
     FIELDS.some((k) => (u[k]||"").toLowerCase().includes(search.toLowerCase()))
   );
+
+  // ── Activity search filter ─────────────────────────────────────────────────
+  const ACT_SEARCH_FIELDS = ["email","firstLogin","lastLogin","firstView","lastView"];
+  const filteredActivities = activities.filter((a) => {
+    if (!actSearch) return true;
+    const q = actSearch.toLowerCase();
+    const inFields = ACT_SEARCH_FIELDS.some((k) => (a[k]||"").toLowerCase().includes(q));
+    const inStalls = Array.isArray(a.stalls) && a.stalls.some((s) => String(s).toLowerCase().includes(q));
+    return inFields || inStalls;
+  });
+
+  // ── Format datetime string nicely ─────────────────────────────────────────
+  const fmtDate = (val) => {
+    if (!val) return <span style={{color:"var(--text-subtle)",fontSize:"12px"}}>—</span>;
+    return <span style={{fontFamily:"'DM Mono',monospace",fontSize:"12px"}}>{val}</span>;
+  };
 
   return (
     <>
@@ -579,6 +770,21 @@ export default function App() {
         .btn-upload:hover{background:var(--accent-hover)}
         .btn-upload:disabled{opacity:0.5;cursor:not-allowed}
 
+        /* STALL PILLS */
+        .stall-pills{display:flex;flex-wrap:wrap;gap:4px}
+        .stall-pill{font-size:11px;font-weight:500;padding:2px 9px;border-radius:20px;background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd;white-space:nowrap}
+
+        /* REFRESH BUTTON */
+        .btn-refresh{
+          display:flex;align-items:center;gap:6px;padding:8px 12px;
+          font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;
+          border:1.5px solid var(--border);border-radius:var(--radius-sm);
+          background:var(--surface);color:var(--text-muted);
+          cursor:pointer;transition:all 0.15s;white-space:nowrap;
+        }
+        .btn-refresh:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-light)}
+        .btn-refresh:disabled{opacity:0.45;cursor:not-allowed}
+
         /* TOAST */
         .toast{position:fixed;bottom:24px;right:24px;padding:12px 18px;border-radius:var(--radius-sm);font-size:13.5px;font-weight:500;box-shadow:var(--shadow);z-index:1000;animation:slideIn 0.2s ease;display:flex;align-items:center;gap:8px}
         .toast.success{background:#1a1917;color:#f7f6f3}
@@ -598,15 +804,16 @@ export default function App() {
             <div className="header-dot"/>
             <span className="header-title">Onference - Adecon</span>
           </div>
-          <span className="header-count">{users.length} users</span>
+        
         </header>
 
         {/* TABS */}
         <nav className="nav">
           {[
-            {id:"users",  label:"All Users"},
-            {id:"create", label:"Create User"},
-            {id:"import", label:"Import", badge:importData.length||null},
+            {id:"users",      label:"All Users"},
+            {id:"activities", label:"All Activities"},
+            {id:"create",     label:"Create User"},
+            {id:"import",     label:"Import", badge:importData.length||null},
           ].map((tab)=>(
             <button key={tab.id} className={`nav-tab${activeTab===tab.id?" active":""}`} onClick={()=>setActiveTab(tab.id)}>
               {tab.label}
@@ -625,7 +832,7 @@ export default function App() {
                   <span className="search-icon">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
                   </span>
-                  <input className="search-input" placeholder="Search User" value={search} onChange={(e)=>setSearch(e.target.value)}/>
+                  <input className="search-input" placeholder="Search" value={search} onChange={(e)=>setSearch(e.target.value)}/>
                 </div>
                 <span className="result-count">
                   {search?`${filtered.length} of ${users.length}`:users.length} results
@@ -653,7 +860,7 @@ export default function App() {
                 {loading?<span className="spinner"/>:filtered.length===0?(
                   <div className="empty">
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
-                    {search?"No users match your search":"No users found"}
+                    {search?"No users match your search":"No Users"}
                   </div>
                 ):(
                   <table>
@@ -688,6 +895,80 @@ export default function App() {
                                   :<><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>Send Notification</>
                                 }
                               </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ═══ ACTIVITIES ═══ */}
+          {activeTab==="activities"&&(
+            <div className="users-panel">
+              <div className="toolbar">
+                <div className="search-wrap">
+                  <span className="search-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                  </span>
+                  <input className="search-input" placeholder="Search " value={actSearch} onChange={(e)=>setActSearch(e.target.value)}/>
+                </div>
+                <span className="result-count">
+                  {actSearch?`${filteredActivities.length} of ${activities.length}`:activities.length} results
+                </span>
+                <div className="toolbar-right">
+                  <button className="btn-refresh" onClick={fetchActivities} disabled={loadingAct}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={loadingAct?{animation:"spin 0.7s linear infinite"}:{}}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                    Refresh
+                  </button>
+                  <button className="btn-export" onClick={()=>setActExportOpen(true)} disabled={activities.length===0}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Export CSV
+                  </button>
+                </div>
+              </div>
+
+              <div className="table-wrap">
+                {loadingAct?<span className="spinner"/>:filteredActivities.length===0?(
+                  <div className="empty">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/></svg>
+                    {actSearch?"No activities match your search":"No Activities "}
+                  </div>
+                ):(
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Email</th>
+                        <th>First Login</th>
+                        <th>Last Login</th>
+                        <th>First View</th>
+                        <th>Last View</th>
+                        <th>Stalls Visited</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredActivities.map((a, i) => {
+                        const stalls = Array.isArray(a.stalls) ? a.stalls : [];
+                        return (
+                          <tr key={i}>
+                            <td className="td-email">{a.email || <span style={{color:"var(--text-subtle)",fontSize:"12px"}}>—</span>}</td>
+                            <td>{fmtDate(a.firstLogin)}</td>
+                            <td>{fmtDate(a.lastLogin)}</td>
+                            <td>{fmtDate(a.firstView)}</td>
+                            <td>{fmtDate(a.lastView)}</td>
+                            <td>
+                              {stalls.length > 0 ? (
+                                <div className="stall-pills">
+                                  {stalls.map((s, si) => (
+                                    <span key={si} className="stall-pill">{s}</span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span style={{color:"var(--text-subtle)",fontSize:"12px"}}>—</span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -803,6 +1084,7 @@ export default function App() {
         />
       )}
       {exportOpen&&<ExportModal users={users} onClose={()=>setExportOpen(false)}/>}
+      {actExportOpen&&<ActivityExportModal activities={activities} onClose={()=>setActExportOpen(false)}/>}
 
       {/* TOAST */}
       {toast&&(
